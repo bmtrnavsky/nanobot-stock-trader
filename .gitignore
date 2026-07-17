@@ -1,0 +1,10 @@
+*.pyc
+__pycache__/
+.env
+*.env
+.venv/
+venv/
+*.log
+.DS_Store
+portfolios.json
+watchlist.json
