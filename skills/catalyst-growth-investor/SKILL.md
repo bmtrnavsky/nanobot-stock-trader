@@ -21,18 +21,22 @@ Fill the gap between `swing-trade-scanner` (1-90 day EP trades) and `longterm-qu
 
 ## Data Sources (Use in This Priority Order)
 
-This skill has real, tested scripts in `../stock-data/scripts/` (shared across swing-trade-scanner, longterm-quality-investor, and catalyst-growth-investor). Prefer these over web search wherever they cover the need.
+This skill has real, tested scripts in `../../shared/` (shared across swing-trade-scanner, longterm-quality-investor, and catalyst-growth-investor). Prefer these over web search wherever they cover the need.
 
 - **Live quote, growth metrics, insider/institutional ownership, analyst targets:**
-  `uv run --with yfinance python3 ../stock-data/scripts/fetch_stock_data.py`
+  `uv run --with yfinance python3 ../../shared/fetch_stock_data.py`
+- **Structured financials (cash runway for burners, debt load, revenue/margin trend across actual filed periods):**
+  `uv run --with edgartools python3 ../../shared/financials.py`
+  `fetch_stock_data.py` only returns a single snapshot for revenue/earnings growth -- it can't show a multi-quarter trend, and it has no burn-rate data for cash runway. Use this for Component D (Financial Foundation) and anywhere Component B references a "4-6 quarter" trend.
 - **Candidate screening (market cap, sector, industry filters):**
-  `uv run --with yfinance python3 ../stock-data/scripts/screen_stocks.py`
+  `uv run --with yfinance python3 ../../shared/screen_stocks.py`
 - **SEC filings (10-K, 10-Q, 8-K catalyst confirmation, contract disclosures):**
-  `uv run --with edgartools python3 ../stock-data/scripts/sec_filings.py`
+  `uv run --with edgartools python3 ../../shared/sec_filings.py`
 - **Reddit sentiment (discovery/confirming signal only, never a decision input):**
-  `uv run --with praw python3 ../stock-data/scripts/reddit_sentiment.py`
+  `uv run --with praw python3 ../../shared/reddit_sentiment.py`
+  (currently unavailable -- Reddit closed self-serve OAuth app creation in Nov 2025. Skip this source rather than block on it; it was never a decision input here anyway.)
 - **Independent catalyst verification (does this claim hold up outside company PR):**
-  `uv run --with requests python3 ../stock-data/scripts/perplexity_verify.py`
+  `uv run --with requests python3 ../../shared/perplexity_verify.py`
 
 For qualitative catalyst research the scripts don't cover -- competitor moves, TAM sizing commentary, analyst notes not captured in `fetch_stock_data.py` -- fall back to web search.
 
@@ -228,7 +232,7 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 
 - Ticker, entry price/date, original catalyst thesis, what triggered this check (earnings, news, scheduled review)
 
-If you don't provide these, ask before running.
+If these aren't provided, ask before running.
 
 ### Re-Underwriting Checklist
 
@@ -296,4 +300,4 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 - **Reddit and social sentiment are discovery tools only.** Zero weight in any BUY/HOLD/SELL decision.
 - **Be direct.** State the decision and the specific reason. No hedging.
 - **Know the difference between this skill and the other two.** One-time pop with no durability -> swing-trade-scanner. Proven 10-year moat with no active catalyst -> longterm-quality-investor. Multi-quarter catalyst with growth to match -> here.
-- **Prefer the tested scripts in `../stock-data/scripts/` over web search wherever they cover the need.**
+- **Prefer the tested scripts in `../../shared/` over web search wherever they cover the need.**

@@ -17,19 +17,23 @@ Evaluate U.S. small- and mid-cap public companies for long-term (10-year) owners
 
 ## Data Sources (Use in This Priority Order)
 
-This skill has real, tested scripts in `../stock-data/scripts/` (shared across swing-trade-scanner, longterm-quality-investor, and catalyst-growth-investor). Prefer these over web search wherever they cover the need -- faster, cheaper, structured data instead of parsed pages.
+This skill has real, tested scripts in `../../shared/` (shared across swing-trade-scanner, longterm-quality-investor, and catalyst-growth-investor). Prefer these over web search wherever they cover the need -- faster, cheaper, structured data instead of parsed pages.
 
-- **Live quote, financials, key stats, dividend history:**
-  `uv run --with yfinance python3 ../stock-data/scripts/fetch_stock_data.py`
+- **Live quote, summary ratios (P/E, price/sales, margins-as-reported-by-Yahoo), dividend history:**
+  `uv run --with yfinance python3 ../../shared/fetch_stock_data.py`
+  Note: this only exposes Yahoo's snapshot `info` fields -- no balance sheet, income statement, cash flow line items, or multi-period history. Use it for price/market cap/P-E/dividend data, not for F-Score or ROIC inputs.
+- **Structured 10-K/10-Q financials -- balance sheet, income statement, cash flow, multi-year history, Piotroski F-Score, ROIC, EV/EBITDA, FCF conversion, cash runway:**
+  `uv run --with edgartools python3 ../../shared/financials.py`
+  This is the only source for F-Score inputs, ROIC, gross/operating margin, and multi-quarter trends -- fetch_stock_data.py cannot provide these. Every value it can't verify from the actual filing comes back `null` with a note, never estimated.
 - **Candidate screening (market cap, price, sector, dividend yield filters):**
-  `uv run --with yfinance python3 ../stock-data/scripts/screen_stocks.py`
-- **SEC filings (10-K, 10-Q, going concern, material weakness checks):**
-  `uv run --with edgartools python3 ../stock-data/scripts/sec_filings.py`
+  `uv run --with yfinance python3 ../../shared/screen_stocks.py`
+- **SEC filings (10-K, 10-Q, going concern, material weakness checks, recent filings list):**
+  `uv run --with edgartools python3 ../../shared/sec_filings.py`
 - **Independent catalyst / news verification:**
-  `uv run --with requests python3 ../stock-data/scripts/perplexity_verify.py`
+  `uv run --with requests python3 ../../shared/perplexity_verify.py`
 
-If a script can't answer something (industry context, qualitative moat commentary, analyst notes), fall back to web search:
-- Macrotrends (`macrotrends.net`) -- multi-year financial history, margin trends, ROIC
+If a script can't answer something (industry context, qualitative moat commentary, analyst notes, sector peer multiples for valuation comparison), fall back to web search:
+- Macrotrends (`macrotrends.net`) -- sector peer multiples, qualitative context
 - SEC EDGAR direct (`sec.gov/cgi-bin/browse-edgar`) if the script can't pull a specific filing
 - IBISWorld summaries, Statista, industry association data cited in filings
 
@@ -129,23 +133,21 @@ After output, ask: "Want the full Deep Eval on any of the passes?"
 
 **Goal:** Produce a structured BUY / WATCH / REJECT decision with a thesis, key monitoring metrics, and approximate valuation range.
 
-**Time investment:** This is a 5-component evaluation. Work through all five in order. Do not skip components.
+**Time investment:** This is a 6-component evaluation (six scored components plus a pass/fail SEC filing gate). Work through all of it in order. Do not skip components.
 
 ### Step 0: Data Pull
 
-Before any analysis, pull and document via `fetch_stock_data.py`:
-- **Key stats:** price, market cap, EV, P/E, forward P/E, EV/EBITDA, revenue TTM, revenue growth, gross margin, operating margin, FCF, cash, total debt, shares outstanding, avg volume, 52-week range, beta
-- **F-Score inputs:** ROA, change in ROA, CFO/Assets, accrual ratio (ROA - CFO/Assets), leverage change, current ratio change, share issuance (y/n), gross margin change, asset turnover change
-- **ROIC:** NOPAT / average invested capital
-- **FCF conversion:** FCF / Net Income (TTM)
+Before any analysis, pull and document from both scripts:
+- **From `fetch_stock_data.py`:** price, market cap, P/E, forward P/E, price/sales, total cash, total debt, free cash flow, shares outstanding, avg volume, 52-week range, beta, dividend history
+- **From `financials.py`:** balance sheet / income statement / cash flow line items (2-3 annual periods), the full 9-point Piotroski F-Score (pre-computed, with per-signal detail and honest nulls for anything the filing didn't support), ROIC, gross margin, operating margin, EV, EV/EBITDA, FCF conversion, cash runway. Pass `market_cap`, `total_cash`, `total_debt`, and `free_cashflow` from the `fetch_stock_data.py` call into `financials.py`'s payload so it can compute EV/EV-EBITDA/cash-runway using the Yahoo-sourced figures alongside the filing data.
 
-Flag any figure that cannot be confirmed from a live source as **UNVERIFIED**.
+Flag any figure that cannot be confirmed from a live source as **UNVERIFIED** -- `financials.py` already does this itself (returns `null` with a note rather than a guess), so pass those nulls through rather than filling them in.
 
 ### Component A: Business Quality (30% weight)
 
-1. **ROIC:** Calculate trailing ROIC. Score: >=15% = strong; 10-14% = acceptable; <10% = zero credit. For early-stage: is trajectory toward 15%+ within 2-3 years credible?
-2. **Gross margin trend:** Pull 6-8 quarters. Stable or improving = pass. Eroding at scale = red flag.
-3. **FCF conversion:** FCF / Net Income TTM. >=70% = excellent; 60-70% = acceptable; <50% = examine working capital and capex.
+1. **ROIC:** From `financials.py`'s `roic` field (NOPAT / invested capital -- note it assumes a 21% effective tax rate, not the filer's actual rate, so treat it as an estimate, not a filed figure). Score: >=15% = strong; 10-14% = acceptable; <10% = zero credit. For early-stage: is trajectory toward 15%+ within 2-3 years credible? If `financials.py` returns `null` for ROIC (missing operating income or balance sheet data), flag as UNVERIFIED rather than estimating.
+2. **Gross margin trend:** From `financials.py`'s `ratios_by_period` across however many periods it returned (2-3 annual, filer-dependent). Stable or improving = pass. Eroding at scale = red flag. Not every filer reports a distinct gross profit line (services/subscription businesses often don't) -- if `gross_margin` comes back `null` across all periods, say so explicitly rather than treating it as a red flag.
+3. **FCF conversion:** From `financials.py`'s `fcf_conversion` field (FCF from Yahoo / Net Income from the filing). >=70% = excellent; 60-70% = acceptable; <50% = examine working capital and capex. `null` if net income is missing or zero -- don't estimate.
 4. **Moat classification:**
    - Explicitly identify the source: switching costs, network effects, scale economics, brand, regulatory barriers, proprietary data/patents, niche dominance, operational culture
    - Classify as: **Built** (proven 5+ years stable/rising ROIC) / **Building** (structurally identifiable, early) / **Speculative** (narrative only)
@@ -154,42 +156,53 @@ Flag any figure that cannot be confirmed from a live source as **UNVERIFIED**.
 
 ### Component B: Financial Strength (20% weight)
 
-1. **Calculate full 9-point Piotroski F-Score:**
+1. **Piotroski F-Score:** Use `financials.py`'s `piotroski_f_score` output directly -- it's already computed (all 9 signals, or as many as the filing supports). Read the `score`, `max_possible`, and `missing_signals` fields rather than re-deriving from raw numbers.
 
-| Signal | Condition | Score |
-|---|---|---|
-| F1 ROA | Net income / avg total assets > 0 | 0 or 1 |
-| F2 ROA change | This year ROA > last year ROA | 0 or 1 |
-| F3 CFO | Operating cash flow > 0 | 0 or 1 |
-| F4 Accrual | CFO/Assets > ROA (cash earnings > accounting earnings) | 0 or 1 |
-| F5 Leverage | Long-term debt/avg assets decreased YoY | 0 or 1 |
-| F6 Liquidity | Current ratio improved YoY | 0 or 1 |
-| F7 Dilution | No new common shares issued in past year | 0 or 1 |
-| F8 Gross margin | Gross margin improved YoY | 0 or 1 |
-| F9 Asset turnover | Revenue/avg assets improved YoY | 0 or 1 |
+| Signal | Condition |
+|---|---|
+| F1 ROA | Net income / total assets > 0 |
+| F2 ROA change | This year ROA > last year ROA |
+| F3 CFO | Operating cash flow > 0 |
+| F4 Accrual | CFO/Assets > ROA (cash earnings > accounting earnings) |
+| F5 Leverage | Long-term debt/assets decreased YoY |
+| F6 Liquidity | Current ratio improved YoY |
+| F7 Dilution | No new common shares issued in past year |
+| F8 Gross margin | Gross margin improved YoY |
+| F9 Asset turnover | Revenue/assets improved YoY |
 
-Minimum for Deep Eval BUY consideration: **F-Score >= 6**. Score of 5 = Watch. Score <= 4 = financial strength concern, likely reject.
+Minimum for Deep Eval BUY consideration: **F-Score >= 6 out of the score's own `max_possible`** (not always out of 9 -- some filers don't report every line item, e.g. no separate gross profit or no historical share count). If `max_possible` is 5 or fewer (more than 4 signals missing), treat the whole Financial Strength component as lower-confidence and say so in the output -- don't silently treat a 3/4 as equivalent to a 6/9. Score at or above 6/max = pass. 5/max = Watch. 4 or below = financial strength concern, likely reject.
 
-2. **Interest coverage:** EBIT / interest expense. Must be >=3x. Below 2x = reject.
-3. **Dilution rate:** Annual % change in shares outstanding. <2% = excellent; 2-3% = acceptable; >3% = yellow flag; >5% recurring = hard reject.
-4. **Covenant check:** Any violations or waivers flagged in 10-Q? Yes = red flag.
+2. **Interest coverage:** EBIT (`operating_income` from `financials.py`) / interest expense. Must be >=3x. Below 2x = reject. If interest expense isn't broken out as its own line, flag as UNVERIFIED rather than skip the check silently.
+3. **Dilution rate:** From `financials.py`'s `shares_outstanding` history if available (often isn't -- many filers don't carry a multi-period share count on the balance sheet itself). <2% = excellent; 2-3% = acceptable; >3% = yellow flag; >5% recurring = hard reject. If unavailable, note it and rely on F7's dilution signal instead where it resolved.
+4. **Covenant check:** Any violations or waivers flagged in 10-Q? Yes = red flag. (Web search or `sec_filings.py` recent_filings -- not something `financials.py`'s structured pull surfaces.)
 
 ### Component C: Growth Durability (20% weight)
 
 1. **Revenue growth decomposition:** Organic (new customers + pricing + expansion) vs. acquisition-driven. Organic is worth more.
 2. **Product-market fit evidence:** Customer count growth, retention rates, NRR >100% (SaaS), cohort data, any metric in filings showing customers buy more over time.
 3. **Customer concentration:** >20% from single customer = yellow flag. >30% = red flag. Check 10-K risk factors explicitly.
-4. **TAM assessment:** Is the addressable market growing or shrinking? Does company have <=20% share (room to grow) or >=50% share in a mature market (limited runway)?
-5. **Competitive position:** Is market share stable or growing? Evidence from MD&A, industry reports cited in filings.
 
-### Component D: Management and Capital Allocation (5% weight)
+### Component D: Industry Structure (15% weight)
+
+1. **TAM assessment:** Is the addressable market growing or shrinking? Does company have <=20% share (room to grow) or >=50% share in a mature market (limited runway)?
+2. **Competitive position:** Is market share stable or growing? Evidence from MD&A, industry reports cited in filings.
+3. **Competitive intensity:** How many credible competitors, how differentiated is pricing, is the industry consolidating or fragmenting? Web search sector reports or peer 10-Ks if the target's own filing doesn't say enough.
+
+### Component E: Valuation (10% weight)
+
+1. **EV/FCF and EV/EBIT vs. sector peers:** Pull the target's `ev` and `ev_ebitda` from `financials.py` (EV/EBIT needs EV / `operating_income`, both already in the data pulled). Web search 2-4 direct peers' equivalent multiples for comparison -- `financials.py` doesn't have peer data, only the target.
+2. **FCF yield + growth = approximate expected annual return.** FCF yield = FCF / EV (or FCF / market cap if EV isn't available). Add the credible forward revenue growth rate for a rough expected-return estimate.
+3. **Scoring:** Current multiple at or below the low end of the peer range, with FCF yield + growth implying >=12% expected return = full 10 points. Multiple in line with peers, expected return 8-12% = 6-8 points. Multiple at or above the peer high end, expected return 5-8% = 2-5 points. Paying more than 1.5x the peer high end, or expected return under 5% = 0-2 points regardless of how good the business is -- quality doesn't override a genuinely bad entry price, it just means "wait for a better price," not "buy anyway."
+4. **If peer data can't be found:** score on FCF yield + growth alone against a market-average expected-return benchmark of roughly 8-10%, and flag that the peer comparison step was skipped.
+
+### Component F: Management and Capital Allocation (5% weight)
 
 1. **Insider ownership:** Pull from most recent proxy or `fetch_stock_data.py` holder stats. Founders/CEO owning >=5% actual shares (not just options) = strongly positive. >=3% = acceptable baseline.
 2. **Compensation structure:** Tied to multi-year ROIC or FCF/share = aligned. Tied purely to short-term EPS/revenue = misaligned.
 3. **Capital allocation history (3-5 years):** Review acquisitions (multiples paid, performance), buybacks (price discipline), equity raises (rational or distressed?).
 4. **Communication quality:** Specific, quantified, consistent language about reinvestment opportunities = positive. Vague transformational language without milestones = caution flag.
 
-### Component E: SEC Filing Deep Dive (Gate -- Must Pass)
+### Component G: SEC Filing Deep Dive (Gate -- Must Pass, Not Scored)
 
 **Pull via `sec_filings.py`, or fetch directly from EDGAR if the script doesn't cover it:**
 - Most recent 10-K (annual)
@@ -207,7 +220,7 @@ Key gates:
 
 ### Composite Scoring
 
-Weight the five components as: Business Quality 30, Financial Strength 20, Growth Durability 20, Industry Structure 15, Valuation 10, Management 5 (100 total).
+Weight the six components as: Business Quality 30, Financial Strength 20, Growth Durability 20, Industry Structure 15, Valuation 10, Management 5 (100 total). The SEC Filing Deep Dive is a gate, not part of the 100 -- it can veto a BUY regardless of composite score, but a clean gate result doesn't add points.
 
 **Score interpretation:**
 - >=65: Strong BUY candidate (if no hard reject conditions)
@@ -228,8 +241,8 @@ Confidence: [High / Medium / Low]
 ----------------------------------------
 COMPONENT SCORES:
 Business Quality:        [X/30] -- [ROIC X%, GM trend: up/flat/down, FCF conv X%, Moat: Built/Building/Speculative]
-Financial Strength:      [X/20] -- [F-Score: X/9, Interest cov: Xx, Dilution: X%/yr]
-Growth Durability:       [X/20] -- [Rev growth: X% organic/acquired, Customer conc: OK/flag, TAM: growing/flat]
+Financial Strength:      [X/20] -- [F-Score: X/max_possible, Interest cov: Xx, Dilution: X%/yr]
+Growth Durability:       [X/20] -- [Rev growth: X% organic/acquired, Customer conc: OK/flag]
 Industry Structure:      [X/15] -- [TAM trajectory, competitive intensity, market share trend]
 Valuation:               [X/10] -- [EV/FCF: Xx, EV/EBIT: Xx, FCF yield + growth: X%]
 Management:              [X/5]  -- [Insider own: X%, comp alignment: yes/no, cap alloc: disciplined/mixed]
@@ -239,12 +252,15 @@ BUSINESS QUALITY:
 [3-5 sentences. ROIC, gross margin trend, FCF conversion, moat classification with explicit source, business model clarity]
 
 FINANCIAL STRENGTH:
-F-Score: [X/9]
-[List each of the 9 signals with score]
+F-Score: [X/max_possible] (note if max_possible < 9 and why -- e.g. "no historical share count on the balance sheet")
+[List each resolved signal with its 0/1, and list missing_signals separately]
 [Interest coverage, dilution rate, covenant status]
 
 GROWTH DURABILITY:
-[3-4 sentences. Organic vs acquired, customer concentration, TAM size and trajectory, market share]
+[2-3 sentences. Organic vs acquired, customer concentration]
+
+INDUSTRY STRUCTURE:
+[2-3 sentences. TAM size and trajectory, market share, competitive intensity]
 
 MANAGEMENT:
 [2-3 sentences. Insider ownership %, comp structure, capital allocation track record]
@@ -349,7 +365,7 @@ Confidence: [High / Medium / Low]
 THESIS STATUS: [INTACT / WEAKENING / BROKEN]
 
 Moat: [Strengthening / Stable / Weakening] -- [evidence]
-F-Score: [X/9 current vs X/9 last year] -- [trend]
+F-Score: [X/max_possible current vs X/max_possible last year] -- [trend]
 ROIC: [X% current vs X% prior] -- [trend]
 Gross margin: [X% current vs X% prior] -- [trend]
 Revenue growth: [X% current vs X% prior] -- [trend]
@@ -432,7 +448,7 @@ FCF coverage (last 4 quarters): [covered / X of 4 quarters]
 
 FINANCIAL STRENGTH:
 Net debt/EBITDA: [X]x
-F-Score: [X/9]
+F-Score: [X/max_possible]
 Debt-funded dividend risk: [None / Flag]
 
 ----------------------------------------
@@ -459,4 +475,4 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 - **Boring businesses can be hidden compounders.** Do not penalize unglamorous industries. Evaluate economics, not aesthetics.
 - **Quality beats cheap.** A 20x EV/FCF business compounding ROIC at 20% beats a 10x business with 8% ROIC over 10 years. Do not reflexively favor low multiples.
 - **In Dividend Eval mode specifically: yield alone is never the decision.** A high yield with a shaky payout ratio is a warning sign, not a bonus.
-- **Prefer the tested scripts in `../stock-data/scripts/` over web search wherever they cover the need.**
+- **Prefer the tested scripts in `../../shared/` over web search wherever they cover the need.**

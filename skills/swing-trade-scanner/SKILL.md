@@ -13,28 +13,34 @@ Evaluate any ticker + news catalyst through a disciplined 5-layer pipeline and d
 
 ## Data sources -- use these before web search
 
-This skill has real, tested scripts in `../stock-data/scripts/` (shared
-across all three trading skills in this repo). Prefer these over web search for
+This skill has real, tested scripts in `../../shared/` (shared
+across all three trading skills). Prefer these over web search for
 anything they cover -- they're faster, cheaper, and give structured
 data instead of parsed page text.
 
 - **Price, volume, float, fundamentals, insiders, analyst actions:**
-  `uv run --with yfinance python3 ../stock-data/scripts/fetch_stock_data.py`
+  `uv run --with yfinance python3 ../../shared/fetch_stock_data.py`
   (pipe `{"tickers": [...], "fields": ["price","fundamentals","insiders","analyst"]}` to stdin)
 - **Candidate screening (market cap, price range):**
-  `uv run --with yfinance python3 ../stock-data/scripts/screen_stocks.py`
+  `uv run --with yfinance python3 ../../shared/screen_stocks.py`
 - **SEC filings, insider Form 4s, going-concern check:**
-  `uv run --with edgartools python3 ../stock-data/scripts/sec_filings.py`
+  `uv run --with edgartools python3 ../../shared/sec_filings.py`
   (needs an identity string -- set one up if not already configured)
+- **Structured financials (balance sheet, income statement, cash flow, debt/equity, cash runway for actual burners):**
+  `uv run --with edgartools python3 ../../shared/financials.py`
+  (used sparingly here -- Layer 4 is a red-flag filter, not a deep dive; reach for this only for Debt/Equity and Cash runway, which `fetch_stock_data.py` can't provide)
+- **VIX + Fear & Greed Index (Down Tape Protocol):**
+  `uv run --with yfinance --with fear-and-greed python3 ../../shared/market_mood.py`
 - **Reddit sentiment/discovery:**
-  `uv run --with praw python3 ../stock-data/scripts/reddit_sentiment.py`
-  (needs Reddit app credentials -- set up a free app at reddit.com/prefs/apps if not already configured)
+  `uv run --with praw python3 ../../shared/reddit_sentiment.py`
+  (needs Reddit app credentials -- currently unavailable; Reddit closed self-serve OAuth app creation in Nov 2025 and personal-use apps aren't getting approved under the new process. Treat this source as offline for now -- don't block a scan on it, just skip it and note fewer source types were checked for Cross-Source Confirmation.)
 - **Independent catalyst verification (M&A, partnership claims):**
-  `uv run --with requests python3 ../stock-data/scripts/perplexity_verify.py`
-  (needs a Perplexity API key -- get one if not already configured)
+  `uv run --with requests python3 ../../shared/perplexity_verify.py`
+  (needs a Perplexity API key -- set one up if not already configured)
 
 Still use web search for: real-time chart/VWAP context, practitioner
-blogs (Stockbee, TradeThatSwing), and anything the scripts don't cover.
+blogs (Stockbee, TradeThatSwing), days to next earnings, and anything
+the scripts don't cover.
 
 ---
 
@@ -140,7 +146,7 @@ Check whether average daily volume was quietly increasing in the 10 days BEFORE 
 - Note in the output: "Pre-catalyst volume: building / flat / declining"
 
 ### Liquidity red flags (auto-disqualifiers)
-- Price outside your configured trading range (hard stop, do not evaluate)
+- Price < $3 or > $15 (outside your configured trading range -- hard stop, do not evaluate)
 - Market cap > $5B (news won't move it enough for a swing)
 - Average daily volume < 100K shares (can't get in/out cleanly)
 - Bid/ask spread > 2% (slippage kills the trade)
@@ -223,20 +229,20 @@ When multiple confidence signals align, they compound:
 
 This is a **red flag filter only** -- not a primary trigger. The goal is to avoid blowing up on a garbage balance sheet, not to find a value stock.
 
-Pull via `fetch_stock_data.py` (`fundamentals` field): P/E, forward P/E, price/sales, profit margin, revenue growth, cash, debt, free cash flow. Pull short interest and insider ownership via the `price`/`insiders` fields.
+Pull via `fetch_stock_data.py`: P/E, forward P/E, price/sales, profit margin, revenue growth, cash, debt, free cash flow, short interest (`price` field group). Insider ownership % comes from the `institutional` field group (`pct_held_insiders`), not `insiders` -- the `insiders` field only returns transaction records, not an ownership percentage. Cash runway needs a burn-rate figure `fetch_stock_data.py` doesn't provide for profitable-adjacent companies; for clear cash-burners, pull `financials.py`'s `cash_runway` field instead (uses net income from the actual filing, not an estimate). Days to next earnings has no script source -- web search it, and don't present it next to the script-backed rows as if it came from the same place.
 
-| Metric | Green | Yellow | Red Flag |
-|---|---|---|---|
-| P/E (if profitable) | < 25 | 25-50 | > 100 or deeply negative |
-| Price/Sales | < 3 | 3-10 | > 15 (unless transformational catalyst) |
-| Debt/Equity | < 1.0 | 1.0-1.5 | > 1.5 |
-| Revenue growth (YoY) | Positive + accelerating | Flat | Declining |
-| EPS trend | Growing or first profitability | Mixed | Deeply negative with no path |
-| Short interest | 5-30% (squeeze fuel) | < 5% (no squeeze) | > 35% (violent reversal risk) |
-| Cash runway (biotech/unprofitable) | >= 18 months | 12-18 months | < 12 months |
-| Insider ownership | >= 10% (aligned) | 5-10% | < 3% |
-| Days to next earnings | > 14 days out | 7-14 days out | < 7 days out (binary event risk stacks on catalyst risk) |
-| Recent price spike (prior 5 days) | Flat/normal | Up 5-15% | Up > 15% (catalyst may be chasing an already-extended move -- cross-reference Layer 3's "100%+ move = over-extended" warning) |
+| Metric | Green | Yellow | Red Flag | Source |
+|---|---|---|---|---|
+| P/E (if profitable) | < 25 | 25-50 | > 100 or deeply negative | `fetch_stock_data.py` |
+| Price/Sales | < 3 | 3-10 | > 15 (unless transformational catalyst) | `fetch_stock_data.py` |
+| Debt/Equity | < 1.0 | 1.0-1.5 | > 1.5 | `financials.py` (`total_liabilities` / `stockholders_equity` -- `fetch_stock_data.py` has no equity field) |
+| Revenue growth (YoY) | Positive + accelerating | Flat | Declining | `fetch_stock_data.py` |
+| EPS trend | Growing or first profitability | Mixed | Deeply negative with no path | `fetch_stock_data.py` |
+| Short interest | 5-30% (squeeze fuel) | < 5% (no squeeze) | > 35% (violent reversal risk) | `fetch_stock_data.py` |
+| Cash runway (biotech/unprofitable) | >= 18 months | 12-18 months | < 12 months | `financials.py` `cash_runway` (null if company isn't burning cash) |
+| Insider ownership | >= 10% (aligned) | 5-10% | < 3% | `fetch_stock_data.py` `institutional` field |
+| Days to next earnings | > 14 days out | 7-14 days out | < 7 days out (binary event risk stacks on catalyst risk) | web search -- no script source |
+| Recent price spike (prior 5 days) | Flat/normal | Up 5-15% | Up > 15% (catalyst may be chasing an already-extended move -- cross-reference Layer 3's "100%+ move = over-extended" warning) | web search / chart data |
 
 **Flag red flags explicitly. Flag strong tailwinds (e.g., huge earnings beat + solid balance sheet) explicitly.**
 
@@ -253,7 +259,6 @@ Only reach this layer if the setup has passed layers 1-4 sufficiently.
 - No single position > **10% of portfolio**
 - You do not need to specify your account size -- the skill outputs the framework and you apply it
 - **ATR-based sizing (use this, not a fixed percentage stop):** Position Size = (Account x 1-2%) / (1.5-2x ATR). This normalizes risk across setups with very different volatility profiles -- a $7 stock with ATR of $1.50 requires a very different size than one with ATR of $0.40, even if the stop levels look similar on a chart. Always calculate and state ATR in the trade plan output.
-
 ## Cross-Source Confirmation
 
 When the same ticker surfaces across multiple sources during a scan or evaluation, treat it as a meaningful signal -- not noise to deduplicate. Cross-source confirmation indicates multiple independent participant types are discovering the same setup, which is drift fuel for EP setups.
@@ -305,14 +310,14 @@ Activate Down Tape Mode:
 - If no A+ setups exist, deliver the "Today is not the day" output immediately
 
 **VIX Elevated Mode (secondary filter -- check alongside tape direction):**
-Search current VIX level whenever running a scan or evaluation.
+Pull current VIX via `uv run --with yfinance --with fear-and-greed python3 ../../shared/market_mood.py` whenever running a scan or evaluation -- more reliable than parsing search results for a number that drives hard gating rules.
 - **VIX > 25:** Treat all B-grade setups as PASS regardless of tape direction. Require full A+ criteria for any trade. Institutional risk-off collapses the drift mechanism even on technically strong setups.
 - **VIX > 30:** Down Tape Mode rules apply regardless of whether the broad market is up or down on the day. Fear at this level means even A-grade setups carry elevated failure risk -- flag this explicitly in the output.
 - **VIX <= 25:** Normal grading rules apply.
 
 Flag the VIX level in every scan output header.
 
-**Fear & Greed Index (secondary sentiment check, via the `fear-and-greed` package -- CNN's index):**
+**Fear & Greed Index (secondary sentiment check -- same `market_mood.py` call returns both VIX and this in one shot):**
 Check alongside VIX, not as a replacement for it. This is a contrarian signal, unlike VIX.
 - **Extreme Fear (0-25):** Genuinely bucking a fearful tape is a rarer, more credible signal than the same setup on a euphoric day -- treat as a confidence builder on an otherwise-qualifying A/A+ setup, note it explicitly: "Extreme Fear + qualifying setup -- contrarian tailwind."
 - **Extreme Greed (75-100):** Everything looks like a setup when the market is euphoric -- raise the bar the same way elevated VIX does. Require full A+ criteria; treat B-grade setups with extra skepticism even if VIX itself is calm.
@@ -338,7 +343,7 @@ TODAY IS NOT THE DAY.
 [If down tape:]
 Market conditions: Broad market down [X]% today.
 Down Tape Mode active -- A+ setups only.
-Result: Nothing in your configured price range is bucking the
+Result: Nothing in the $3-$15 range is bucking the
 tape with a Score 5 catalyst and RVOL 5x+ today.
 
 [If flat/up tape with no setups:]
@@ -348,7 +353,7 @@ Qualified after news filter: [N]
 Result: Nothing passed the full pipeline today.
 
 What failed:
-- [TICKER]: [One sentence -- e.g., "Price $47, outside configured range"]
+- [TICKER]: [One sentence -- e.g., "Price $47, outside $3-$15 range"]
 - [TICKER]: [One sentence -- e.g., "News score 2, generic PR with no hard numbers"]
 - [TICKER]: [One sentence -- e.g., "RVOL 1.3x, already priced in"]
 
@@ -618,7 +623,7 @@ When you provide a ticker you're already in with entry price and date, run the e
 - Current stop level (if set)
 - Account for partial profits already taken (if any)
 
-If you don't provide all of these, the skill should ask for what's missing before running the evaluation.
+If you don't provide all of these, ask for what's missing before running the evaluation.
 
 ### Exit monitor pipeline
 
@@ -704,7 +709,7 @@ No hedging.]
 ---
 ## Data Sources Priority
 
-**Prefer the tested scripts in `../stock-data/scripts/` over web search wherever they cover the need -- faster, cheaper, structured data instead of parsed pages.**
+**Prefer the tested scripts in `../../shared/` over web search wherever they cover the need -- faster, cheaper, structured data instead of parsed pages.**
 
 **Catalyst and news quality:**
 1. **`sec_filings.py`** -- primary source for catalyst verification (8-K, 10-Q, 10-K, Form 4 insider transactions, going-concern check)
@@ -726,7 +731,7 @@ No hedging.]
 
 **Sentiment and momentum sources:**
 13. **`reddit_sentiment.py`** -- r/SwingTrading, r/RealDayTrading, r/wallstreetbets, r/smallstreetbets, r/Daytrading, r/stocks
-14. **`fear-and-greed`** (via Down Tape Protocol) -- CNN Fear & Greed Index
+14. **`market_mood.py`** (VIX + CNN Fear & Greed Index, via the Down Tape Protocol)
 
 ---
 
@@ -735,5 +740,5 @@ No hedging.]
 - **Never fabricate financial data.** If a script returns null/error or you can't find a ratio or volume figure, say so and flag it as "unverified."
 - **Never upgrade a PASS based on vibes.** If Layer 1 scores < 3 or a liquidity red flag triggers, the skip rule is hard.
 - **Be direct.** "This is a PASS because the catalyst is a PR with no hard numbers and RVOL is 1.2x" is the right output. Not "this could be interesting but there are risks to consider."
-- **Account size agnostic.** Output the risk framework (1-2% rule, 1:2 R:R) and let the user apply it to their actual account size.
+- **Account size agnostic.** Output the risk framework (1-2% rule, 1:2 R:R) so you can apply it to your actual account size.
 - **Disclaimer at the bottom of every evaluation:** "This is not financial advice. All trading involves risk. Do your own due diligence before entering any position."
