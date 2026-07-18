@@ -31,9 +31,9 @@ data instead of parsed page text.
   (used sparingly here -- Layer 4 is a red-flag filter, not a deep dive; reach for this only for Debt/Equity and Cash runway, which `fetch_stock_data.py` can't provide)
 - **VIX + Fear & Greed Index (Down Tape Protocol):**
   `uv run --with yfinance --with fear-and-greed python3 ../../shared/market_mood.py`
-- **Reddit sentiment/discovery:**
-  `uv run --with praw python3 ../../shared/reddit_sentiment.py`
-  (needs Reddit app credentials -- currently unavailable; Reddit closed self-serve OAuth app creation in Nov 2025 and personal-use apps aren't getting approved under the new process. Treat this source as offline for now -- don't block a scan on it, just skip it and note fewer source types were checked for Cross-Source Confirmation.)
+- **Reddit-sourced sentiment (replaces the old reddit_sentiment.py -- see note below):**
+  `uv run --with requests python3 ../../shared/sentisense_sentiment.py`
+  (needs a SentiSense API key -- set one up if not already configured. Free tier is 1,000 requests/month, 30/min -- **only call this on candidates that already passed News Quality, Volume/Liquidity, and Chart Behavior**, not on every raw candidate in a scan. Returns Reddit document sentiment scores and a sentiment time series for a ticker; no post text, sentiment signal only.)
 - **Independent catalyst verification (M&A, partnership claims):**
   `uv run --with requests python3 ../../shared/perplexity_verify.py`
   (needs a Perplexity API key -- set one up if not already configured)
@@ -270,8 +270,7 @@ Source TYPE matters more than source COUNT. The same ticker appearing in five Re
 **Counts as a separate source type:**
 - SEC filing or verified press release (hard catalyst) -- check via `sec_filings.py`
 - Practitioner blog (Stockbee, TradeThatSwing, SharePlanner)
-- Forum with methodology focus (BearBullTraders, EliteTrader, r/RealDayTrading, r/SwingTrading) -- check via `reddit_sentiment.py`
-- Retail momentum community (r/wallstreetbets, r/smallstreetbets, r/Daytrading) -- check via `reddit_sentiment.py`
+- Reddit sentiment via `sentisense_sentiment.py` -- counts as ONE source type regardless of how many documents it returns. Unlike the old subreddit-by-subreddit approach, SentiSense's ticker-level sentiment doesn't distinguish which subreddit a post came from, so it can't be split into "methodology-focused" vs "retail momentum" subtypes the way the old setup could.
 - Traditional financial news (Benzinga, MarketBeat, financial wire services)
 - Volume/RVOL data independently confirming unusual activity -- check via `fetch_stock_data.py`
 
@@ -471,10 +470,9 @@ Search 4: small cap contract win partnership announcement today 2026
 Search 5: short squeeze unusual volume small cap today 2026
 ```
 
-**Reddit scan (run via `reddit_sentiment.py` alongside news searches):**
-Query the shared script with subreddits `["wallstreetbets","swingtrading","smallcapstocks","pennystocks"]` for general discovery, and `["stocks"]` for broader DD.
+**Note on Reddit discovery:** the old `reddit_sentiment.py` could browse whole subreddits for whatever was trending, which fed the initial candidate sweep below. `sentisense_sentiment.py` is ticker-specific -- it can only tell you sentiment on a ticker you already have, not surface new ones from raw subreddit browsing. Reddit is no longer part of Step 1 discovery; it moves to Cross-Source Confirmation during Step 3's full pipeline run on survivors, both because that's what the data actually supports and because it conserves the 1,000/month free-tier quota.
 
-**Swing trading blogs and forums (run alongside Reddit):**
+**Swing trading blogs and forums:**
 ```
 Search 11: site:stockbee.blogspot.com episodic pivot setup 2026
 Search 12: site:tradethatswing.com best stocks swing trade this week
@@ -490,7 +488,7 @@ Search 15: site:elitetrader.com swing trade catalyst setup today
 - **BearBullTraders forum (forums.bearbulltraders.com)** -- Medium signal. Large active community with dedicated swing trade watchlist threads.
 - **EliteTrader (elitetrader.com)** -- Medium signal. Experienced crowd, lower noise than Reddit, good for confirming setups already on the radar.
 
-**Blog/forum filter -- same standard as Reddit:**
+**Blog/forum filter:**
 - Blog/forum mention + SEC filing or verified press release (check `sec_filings.py`) -> valid candidate, proceed
 - Blog/forum mention + RVOL confirmation (check `fetch_stock_data.py`) -> valid candidate, proceed
 - Blog/forum mention only, no filing, no data -> treat as idea only, still must pass 5-layer pipeline
@@ -502,27 +500,13 @@ Search 16: [sector] stock catalyst news today 2026
 Search 17: reddit.com wallstreetbets [sector] today
 Search 18: stockbee [sector] episodic pivot today
 ```
-
-**Reddit hype filter -- apply before any ticker enters the pipeline:**
-- Reddit mention + linked SEC filing (8-K) or verified press release -> valid candidate, proceed
-- Reddit mention + RVOL confirmation from `fetch_stock_data.py` -> valid candidate, proceed
-- Reddit mention only, no filing, no press release, no RVOL data -> News Quality <= 2, auto-pass immediately
-- Reddit as a confirming signal for a ticker already scoring 4-5 on news quality -> flag as "Reddit tailwind -- retail FOMO may fuel drift"
-- High short interest + Reddit buzz + volume spike -> flag as "Squeeze candidate" and note it separately
-
-**Subreddit signal quality (for weighting Reddit findings):**
-- r/SwingTrading -- Highest signal for EP setups
-- r/RealDayTrading -- High signal; disciplined, strategy-driven posts
-- r/wallstreetbets -- High noise, catches squeezes early; filter hard
-- r/Daytrading -- Medium signal; good for unusual volume mentions
-- r/smallstreetbets -- Medium signal; small cap specific, less noise than WSB
-- r/stocks -- Lower signal; use only if ticker has multiple detailed mentions
+Search 17 is a plain web search of Reddit's public pages, not an API call -- fine for discovery-level "what's being talked about," just don't treat it as a scored source the way `sentisense_sentiment.py`'s confirmed sentiment is.
 
 From all searches, identify 4-8 tickers with potential EP catalysts. Discard anything that is:
 - Clearly a large cap (market cap > $5B)
-- A generic PR with no hard numbers and no Reddit or blog volume confirmation
-- Reddit/blog mention only with no filing, press release, or RVOL data
-- Already fully covered mainstream news with no fresh angle, Reddit tailwind, or practitioner blog coverage
+- A generic PR with no hard numbers and no blog volume confirmation
+- Blog mention only with no filing, press release, or RVOL data
+- Already fully covered mainstream news with no fresh angle or practitioner blog coverage
 ### Step 2: Quick filter -- News Quality pass/fail
 
 For each candidate, score News Quality (Layer 1) first. Takes 60 seconds per ticker.
@@ -571,7 +555,7 @@ Speculation warning: [Yes/No -- flag if the macro catalyst has no hard filing or
 
 ### Step 3: Full pipeline on qualifying candidates
 
-Run each ticker that passed the news filter through all 5 layers. Be efficient -- you're evaluating multiple names, not writing a novel per ticker. Use the structured output format but keep layer summaries tight (1-2 sentences each) unless a layer has a critical finding.
+Run each ticker that passed the news filter through all 5 layers. Be efficient -- you're evaluating multiple names, not writing a novel per ticker. Use the structured output format but keep layer summaries tight (1-2 sentences each) unless a layer has a critical finding. This is where `sentisense_sentiment.py` gets called, if at all -- one call per surviving candidate for Cross-Source Confirmation, not one per raw candidate back in Step 1. On a typical scan of 4-8 candidates that's 4-8 calls, well inside the 1,000/month quota; the discipline matters more on a big multi-sector sweep where dozens of names clear Step 2.
 ### Step 4: Deliver ranked shortlist
 
 Rank by overall grade (A+ -> A -> B) and present as a scannable list:
@@ -730,7 +714,7 @@ No hedging.]
 12. **EliteTrader (elitetrader.com)** -- experienced practitioner discussion
 
 **Sentiment and momentum sources:**
-13. **`reddit_sentiment.py`** -- r/SwingTrading, r/RealDayTrading, r/wallstreetbets, r/smallstreetbets, r/Daytrading, r/stocks
+13. **`sentisense_sentiment.py`** -- Reddit-sourced sentiment per ticker (confirmation only, 1,000 req/month free tier -- see Step 3 above)
 14. **`market_mood.py`** (VIX + CNN Fear & Greed Index, via the Down Tape Protocol)
 
 ---
