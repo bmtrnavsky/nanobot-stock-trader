@@ -1,6 +1,6 @@
 ---
 name: swing-trade-scanner
-description: "Episodic pivot swing trade scanner and evaluator for 1-90 day holds. Three modes: (1) SCAN -- proactively scans market news and Reddit for EP setups, runs each candidate through the full 5-layer pipeline, and delivers a ranked shortlist -- use when you say what's popping, find me setups, anything worth looking at, scan for trades; (2) EVALUATE -- full 5-layer evaluation of a specific ticker plus news -- use when you say check this ticker, is X worth a trade, is this a good swing trade, analyze this stock, or provide a ticker with or without news; (3) EXIT MONITOR -- evaluates whether to hold, tighten, take partial profits, or exit an open position -- use when you say should I hold X, check my position in X, is it time to sell X. Built on Qullamaggie episodic pivot methodology for small-cap catalysts. Uses scripts/ for live data (yfinance, SEC EDGAR, Reddit) instead of web search where possible."
+description: "Episodic pivot swing trade scanner and evaluator for 1-90 day holds. Three modes: (1) SCAN -- proactively scans market news and Reddit for EP setups, runs each candidate through the full 5-layer pipeline, and delivers a ranked shortlist -- use when the user says what's popping, find me setups, anything worth looking at, scan for trades; (2) EVALUATE -- full 5-layer evaluation of a specific ticker plus news -- use when the user says check this ticker, is X worth a trade, is this a good swing trade, analyze this stock, or provides a ticker with or without news; (3) EXIT MONITOR -- evaluates whether to hold, tighten, take partial profits, or exit an open position -- use when the user says should I hold X, check my position in X, is it time to sell X. Built on Qullamaggie episodic pivot methodology for small-cap catalysts. Uses scripts/ for live data (yfinance, SEC EDGAR, Reddit) instead of web search where possible."
 ---
 
 # Swing Trade Scanner -- Episodic Pivot Framework
@@ -25,7 +25,7 @@ data instead of parsed page text.
   `uv run --with yfinance python3 ../../shared/screen_stocks.py`
 - **SEC filings, insider Form 4s, going-concern check:**
   `uv run --with edgartools python3 ../../shared/sec_filings.py`
-  (needs an identity string -- set one up if not already configured)
+  (needs an identity string -- ask the user if not already configured)
 - **Structured financials (balance sheet, income statement, cash flow, debt/equity, cash runway for actual burners):**
   `uv run --with edgartools python3 ../../shared/financials.py`
   (used sparingly here -- Layer 4 is a red-flag filter, not a deep dive; reach for this only for Debt/Equity and Cash runway, which `fetch_stock_data.py` can't provide)
@@ -33,14 +33,22 @@ data instead of parsed page text.
   `uv run --with yfinance --with fear-and-greed python3 ../../shared/market_mood.py`
 - **Reddit-sourced sentiment (replaces the old reddit_sentiment.py -- see note below):**
   `uv run --with requests python3 ../../shared/sentisense_sentiment.py`
-  (needs a SentiSense API key -- set one up if not already configured. Free tier is 1,000 requests/month, 30/min -- **only call this on candidates that already passed News Quality, Volume/Liquidity, and Chart Behavior**, not on every raw candidate in a scan. Returns Reddit document sentiment scores and a sentiment time series for a ticker; no post text, sentiment signal only.)
+  (needs a SentiSense API key -- ask the user if not already configured. Free tier is 1,000 requests/month, 30/min -- **only call this on candidates that already passed News Quality, Volume/Liquidity, and Chart Behavior**, not on every raw candidate in a scan. Returns Reddit document sentiment scores and a sentiment time series for a ticker; no post text, sentiment signal only.)
 - **Independent catalyst verification (M&A, partnership claims):**
   `uv run --with requests python3 ../../shared/perplexity_verify.py`
-  (needs a Perplexity API key -- set one up if not already configured)
+  (needs a Perplexity API key -- ask the user if not already configured)
 
 Still use web search for: real-time chart/VWAP context, practitioner
 blogs (Stockbee, TradeThatSwing), days to next earnings, and anything
 the scripts don't cover.
+
+**Credentials (verified live 2026-07-19):** scripts read keys from env
+vars -- `EDGAR_IDENTITY` (name+email string for SEC), `SENTISENSE_API_KEY`,
+`PERPLEXITY_API_KEY` -- or an `identity`/`api_key` field in the JSON
+payload. If a script errors on a missing key, ask the user for the value
+once and pass it in the payload; don't retry blind. Note `uv` lives at
+`~/.local/bin/uv` -- if `uv: command not found`, the exec
+PATH is missing `~/.local/bin`.
 
 ---
 
@@ -115,8 +123,8 @@ Use `sec_filings.py` (recent_filings check) plus web search to retrieve:
 ## LAYER 2: Volume & Liquidity (Weight ~25%)
 
 ### Pre-catalyst baseline (fetch via fetch_stock_data.py price fields)
-- **Price range:** **$3-$15 HARD FILTER** -- this is the target trading range for this skill's default configuration. Adjust to your own range if different, but auto-pass anything outside your configured range before running any other layer. No exceptions, no "exceptional catalyst" flex outside the range.
-- **Market cap:** $50M-$1B (small enough for news to matter, large enough to be tradeable)
+- **Price range:** **$3-$20 HARD FILTER** -- this is the target trading range. Auto-pass anything below $3 or above $20 before running any other layer. No exceptions, no "exceptional catalyst" flex above $20.
+- **Market cap:** $50M-$1B preferred (small enough for news to matter, large enough to be tradeable). **$1B-$5B gray zone: evaluate, but cap the final grade at A -- never A+ -- and state that cap explicitly in the output** (repricing power weakens with size; the catalyst has to be proportionally bigger to produce the same drift). Above $5B stays an auto-disqualifier.
 - **Average daily volume (30-50 day):** Minimum 300K shares; preferred >= enough for $1M-$5M daily dollar volume
 
 ### Catalyst-day volume (the signal)
@@ -146,7 +154,7 @@ Check whether average daily volume was quietly increasing in the 10 days BEFORE 
 - Note in the output: "Pre-catalyst volume: building / flat / declining"
 
 ### Liquidity red flags (auto-disqualifiers)
-- Price < $3 or > $15 (outside your configured trading range -- hard stop, do not evaluate)
+- Price < $3 or > $20 (outside the target trading range -- hard stop, do not evaluate)
 - Market cap > $5B (news won't move it enough for a swing)
 - Average daily volume < 100K shares (can't get in/out cleanly)
 - Bid/ask spread > 2% (slippage kills the trade)
@@ -242,7 +250,7 @@ Pull via `fetch_stock_data.py`: P/E, forward P/E, price/sales, profit margin, re
 | Cash runway (biotech/unprofitable) | >= 18 months | 12-18 months | < 12 months | `financials.py` `cash_runway` (null if company isn't burning cash) |
 | Insider ownership | >= 10% (aligned) | 5-10% | < 3% | `fetch_stock_data.py` `institutional` field |
 | Days to next earnings | > 14 days out | 7-14 days out | < 7 days out (binary event risk stacks on catalyst risk) | web search -- no script source |
-| Recent price spike (prior 5 days) | Flat/normal | Up 5-15% | Up > 15% (catalyst may be chasing an already-extended move -- cross-reference Layer 3's "100%+ move = over-extended" warning) | web search / chart data |
+| Recent price spike (5 days ending the day BEFORE the catalyst day -- never count the catalyst gap itself, or every EP evaluated on day 2+ self-flags red) | Flat/normal | Up 5-15% | Up > 15% (catalyst may be chasing an already-extended move -- cross-reference Layer 3's "100%+ move = over-extended" warning) | web search / chart data |
 
 **Flag red flags explicitly. Flag strong tailwinds (e.g., huge earnings beat + solid balance sheet) explicitly.**
 
@@ -257,7 +265,7 @@ Only reach this layer if the setup has passed layers 1-4 sufficiently.
 ### Position sizing
 - Risk per trade: **1-2% of account** maximum
 - No single position > **10% of portfolio**
-- You do not need to specify your account size -- the skill outputs the framework and you apply it
+- You do not need to specify account size -- output the framework and let the user apply it
 - **ATR-based sizing (use this, not a fixed percentage stop):** Position Size = (Account x 1-2%) / (1.5-2x ATR). This normalizes risk across setups with very different volatility profiles -- a $7 stock with ATR of $1.50 requires a very different size than one with ATR of $0.40, even if the stop levels look similar on a chart. Always calculate and state ATR in the trade plan output.
 ## Cross-Source Confirmation
 
@@ -342,7 +350,7 @@ TODAY IS NOT THE DAY.
 [If down tape:]
 Market conditions: Broad market down [X]% today.
 Down Tape Mode active -- A+ setups only.
-Result: Nothing in the $3-$15 range is bucking the
+Result: Nothing in the $3-$20 range is bucking the
 tape with a Score 5 catalyst and RVOL 5x+ today.
 
 [If flat/up tape with no setups:]
@@ -352,7 +360,7 @@ Qualified after news filter: [N]
 Result: Nothing passed the full pipeline today.
 
 What failed:
-- [TICKER]: [One sentence -- e.g., "Price $47, outside $3-$15 range"]
+- [TICKER]: [One sentence -- e.g., "Price $47, outside $3-$20 range"]
 - [TICKER]: [One sentence -- e.g., "News score 2, generic PR with no hard numbers"]
 - [TICKER]: [One sentence -- e.g., "RVOL 1.3x, already priced in"]
 
@@ -455,11 +463,11 @@ the decision and the biggest risk. No hedging. No "it depends."]
 ```
 ## SCAN MODE -- "What's Popping / Find Me Setups"
 
-When you ask "what's popping," "scan for setups," "anything worth looking at today," or similar -- run a full proactive scan, evaluate each candidate through the 5-layer pipeline, and deliver a ranked shortlist. Don't just hand back a list of tickers to evaluate yourself.
+When the user asks "what's popping," "scan for setups," "anything worth looking at today," or similar -- run a full proactive scan, evaluate each candidate through the 5-layer pipeline, and deliver a ranked shortlist. Do not just hand him a list of tickers to evaluate himself.
 
 ### Step 1: Surface candidates
 
-**Structured screen first:** run `screen_stocks.py` with `market_cap_min: 50000000, market_cap_max: 1000000000, price_min: 3, price_max: 15, predefined: "small_cap_gainers"` (or `day_gainers`, `most_actives`) to get a real, live, pre-filtered candidate pool inside your configured universe before any web search -- faster and cleaner than searching blind.
+**Structured screen first:** run `screen_stocks.py` with `market_cap_min: 50000000, market_cap_max: 1000000000, price_min: 3, price_max: 20, predefined: "small_cap_gainers"` (or `day_gainers`, `most_actives`) to get a real, live, pre-filtered candidate pool inside the configured universe before any web search -- faster and cleaner than searching blind.
 
 **Traditional news sources (fill gaps the screen doesn't cover -- FDA/contract catalysts don't always show up as "gainers" yet):**
 ```
@@ -494,7 +502,7 @@ Search 15: site:elitetrader.com swing trade catalyst setup today
 - Blog/forum mention only, no filing, no data -> treat as idea only, still must pass 5-layer pipeline
 - Stockbee EP mention specifically -> elevate to priority candidate, run full evaluation immediately
 
-If you specify a sector (biotech, energy, defense, tech), add a `sector`-filtered `screen_stocks.py` query plus:
+If the user specifies a sector (biotech, energy, defense, tech), add a `sector`-filtered `screen_stocks.py` query plus:
 ```
 Search 16: [sector] stock catalyst news today 2026
 Search 17: reddit.com wallstreetbets [sector] today
@@ -598,7 +606,7 @@ After the shortlist, ask: "Want the full evaluation on any of these?"
 ---
 ## EXIT MONITOR MODE -- "Should I Hold or Sell [TICKER]?"
 
-When you provide a ticker you're already in with entry price and date, run the exit monitor. This mode evaluates whether the original thesis is still intact and whether it's time to hold, tighten the stop, take partial profits, or exit.
+When the user provides a ticker he's already in with entry price and date, run the exit monitor. This mode evaluates whether the original thesis is still intact and whether it's time to hold, tighten the stop, take partial profits, or exit.
 
 ### Inputs needed
 - Ticker
@@ -607,7 +615,7 @@ When you provide a ticker you're already in with entry price and date, run the e
 - Current stop level (if set)
 - Account for partial profits already taken (if any)
 
-If you don't provide all of these, ask for what's missing before running the evaluation.
+If the user doesn't provide all of these, ask for what's missing before running the evaluation.
 
 ### Exit monitor pipeline
 
@@ -703,7 +711,7 @@ No hedging.]
 
 **Chart and volume data:**
 5. **`fetch_stock_data.py`** -- price, volume, float, fundamentals, insider/institutional/analyst data
-6. **`screen_stocks.py`** -- candidate discovery within your configured universe
+6. **`screen_stocks.py`** -- candidate discovery within the configured universe
 7. **StockCharts / TradingView descriptions** (web search) -- chart structure context, VWAP, intraday behavior
 
 **Practitioner setup sources (scan for candidates, web search):**
@@ -724,5 +732,6 @@ No hedging.]
 - **Never fabricate financial data.** If a script returns null/error or you can't find a ratio or volume figure, say so and flag it as "unverified."
 - **Never upgrade a PASS based on vibes.** If Layer 1 scores < 3 or a liquidity red flag triggers, the skip rule is hard.
 - **Be direct.** "This is a PASS because the catalyst is a PR with no hard numbers and RVOL is 1.2x" is the right output. Not "this could be interesting but there are risks to consider."
-- **Account size agnostic.** Output the risk framework (1-2% rule, 1:2 R:R) so you can apply it to your actual account size.
+- **Account size agnostic.** Output the risk framework (1-2% rule, 1:2 R:R) and let the user apply it to their actual account size.
 - **Disclaimer at the bottom of every evaluation:** "This is not financial advice. All trading involves risk. Do your own due diligence before entering any position."
+
