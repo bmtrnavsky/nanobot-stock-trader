@@ -1,6 +1,6 @@
 # nanobot-stock-trader
 
-**Free, open-source stock research skills for AI agents** -- built for Nanobot, Claude, or any agent runtime that can call a skill file and run Python via `uv run`. No paid data sources required for the core layer, no execution/brokerage integration, and no black-box scoring -- every rule is written out in plain markdown so you can read exactly how a decision gets made before you trust it.
+**Free, open-source stock research skills for AI agents** -- built for Nanobot, Claude, Hermes Agent, or any agent runtime that can call a skill file and run Python via `uv run`. No paid data sources required for the core layer, no execution/brokerage integration, and no black-box scoring -- every rule is written out in plain markdown so you can read exactly how a decision gets made before you trust it.
 
 This is a **decision-support toolkit, not a trading bot.** Nothing here places trades. Each skill pulls live data, runs it through a documented rules-based pipeline, and hands back a structured BUY / WATCH / PASS (or REJECT) decision with the reasoning shown -- you still pull the trigger.
 
