@@ -46,6 +46,8 @@ All three investor skills call the same scripts for live data instead of relying
 
 Every script follows the same interface: **pipe JSON to stdin, get JSON back on stdout.** No CLI flags, no argparse -- trivial for an agent to call via `uv run --with <package> python3 script.py`.
 
+See [shared/SCRIPTS.md](shared/SCRIPTS.md) for the full input/output field reference for each script.
+
 ## Quick start
 
 1. Clone this repo (or just the `skills/` and `shared/` folders) into wherever your agent looks for skills.
