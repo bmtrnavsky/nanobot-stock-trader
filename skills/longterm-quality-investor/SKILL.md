@@ -45,10 +45,10 @@ If a script can't answer something (industry context, qualitative moat commentar
 
 Identify which mode applies from context:
 
-- **SCAN MODE** -- you provide multiple tickers or ask for a pass/fail filter across a list.
-- **DEEP EVAL MODE** -- you provide one ticker and want a full analysis or buy/watch/reject decision.
-- **HOLD/TRIM/SELL MODE** -- you mention a ticker you own and ask whether to hold, trim, or exit.
-- **DIVIDEND EVAL MODE** -- you ask about dividend income, yield, a payer's safety, or screening for dividend candidates.
+- **SCAN MODE** -- the user provides multiple tickers or asks for a pass/fail filter across a list.
+- **DEEP EVAL MODE** -- the user provides one ticker and wants a full analysis or buy/watch/reject decision.
+- **HOLD/TRIM/SELL MODE** -- the user mentions a ticker he owns and asks whether to hold, trim, or exit.
+- **DIVIDEND EVAL MODE** -- the user asks about dividend income, yield, a payer's safety, or screening for dividend candidates.
 
 If the mode is ambiguous, ask before proceeding.
 
@@ -103,7 +103,7 @@ For each ticker:
 3. Check all hard inclusion rules
 4. Assign status: **PASS TO DEEP EVAL** / **WATCH (specify what needs to improve)** / **REJECT (specify rule that failed)**
 
-To source a candidate list rather than working from tickers you already gave it, call `screen_stocks.py` with `market_cap_min: 50000000, market_cap_max: 2000000000, price_min: 5, price_max: 25`.
+To source a candidate list rather than working from tickers the user already gave you, call `screen_stocks.py` with `market_cap_min: 50000000, market_cap_max: 2000000000, price_min: 5, price_max: 25`.
 
 ### Scan Output Format
 
@@ -309,9 +309,9 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 
 ## MODE 3: HOLD / TRIM / SELL MODE
 
-**Goal:** Re-underwrite an existing position after earnings, a material event, or on your own schedule. The question is never "has the stock dropped?" -- it is "has the thesis changed?"
+**Goal:** Re-underwrite an existing position after earnings, a material event, or on a recurring schedule. The question is never "has the stock dropped?" -- it is "has the thesis changed?"
 
-**Trigger:** After each 10-K and 10-Q cycle, after any material 8-K, after a price move >20% in either direction, or when you ask.
+**Trigger:** After each 10-K and 10-Q cycle, after any material 8-K, after a price move >20% in either direction, or When the user asks.
 
 ### Inputs Needed
 
@@ -321,7 +321,7 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 - Current position size / any prior trims
 - Most recent quarterly filing date
 
-If these aren't provided, ask before running.
+If the user doesn't provide these, ask before running.
 
 ### Re-Underwriting Checklist
 
@@ -365,7 +365,7 @@ Confidence: [High / Medium / Low]
 THESIS STATUS: [INTACT / WEAKENING / BROKEN]
 
 Moat: [Strengthening / Stable / Weakening] -- [evidence]
-F-Score: [X/max_possible current vs X/max_possible last year] -- [trend]
+F-Score: [X/9 current vs X/9 last year] -- [trend]
 ROIC: [X% current vs X% prior] -- [trend]
 Gross margin: [X% current vs X% prior] -- [trend]
 Revenue growth: [X% current vs X% prior] -- [trend]
@@ -396,7 +396,7 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 
 **Goal:** Screen for or evaluate durable dividend payers. This is a quality-first filter, not a yield-chasing tool. A 3% yield from a compounding business beats an 8% yield about to be cut.
 
-**Universe:** Relax the price filter used elsewhere in this skill -- dividend payers commonly trade well above $25/share. Keep market cap $50M-$2B unless you ask for large caps specifically. Utilities and REITs get their own inclusion logic below since standard FCF/growth gates don't fit their capital structures.
+**Universe:** Relax the price filter used elsewhere in this skill -- dividend payers commonly trade well above $25/share. Keep market cap $50M-$2B unless the user asks for large caps specifically. Utilities and REITs get their own inclusion logic below since standard FCF/growth gates don't fit their capital structures.
 
 ### Dividend-Specific Hard Reject Rules
 
@@ -419,7 +419,7 @@ Any hit = reject, in addition to the standard hard reject rules above.
 
 ### Screening for Candidates
 
-Call `screen_stocks.py` with a `min_dividend_yield` filter and, if you want a sector focus, a `sector` filter (e.g. `"Utilities"`). Example payload: `{"market_cap_min": 50000000, "market_cap_max": 2000000000, "min_dividend_yield": 2.5, "sector": "Utilities", "count": 25}`.
+Call `screen_stocks.py` with a `min_dividend_yield` filter and, if the user wants a sector focus, a `sector` filter (e.g. `"Utilities"`). Example payload: `{"market_cap_min": 50000000, "market_cap_max": 2000000000, "min_dividend_yield": 2.5, "sector": "Utilities", "count": 25}`.
 
 ### Dividend Eval Process
 
@@ -448,7 +448,7 @@ FCF coverage (last 4 quarters): [covered / X of 4 quarters]
 
 FINANCIAL STRENGTH:
 Net debt/EBITDA: [X]x
-F-Score: [X/max_possible]
+F-Score: [X/9]
 Debt-funded dividend risk: [None / Flag]
 
 ----------------------------------------
@@ -476,3 +476,4 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 - **Quality beats cheap.** A 20x EV/FCF business compounding ROIC at 20% beats a 10x business with 8% ROIC over 10 years. Do not reflexively favor low multiples.
 - **In Dividend Eval mode specifically: yield alone is never the decision.** A high yield with a shaky payout ratio is a warning sign, not a bonus.
 - **Prefer the tested scripts in `../../shared/` over web search wherever they cover the need.**
+
