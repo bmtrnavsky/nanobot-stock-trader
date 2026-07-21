@@ -1,6 +1,6 @@
 ---
 name: catalyst-growth-investor
-description: "Mid-horizon (3 month to 3 year) growth position evaluator for U.S. small/mid-cap companies riding a durable catalyst -- not a quick swing trade, not a 10-year compounder bet. Three modes: SCAN (screen a universe for growth-with-catalyst candidates), DEEP EVAL (full evaluation of a specific ticker's catalyst durability, growth trajectory, and insider conviction), and POSITION CHECK (re-underwrite an open growth position after an earnings print or news event). Use this skill when you're asking about a growth story with legs, a multi-quarter thesis, insider buying as a signal, or a stock that's too slow for the swing scanner but too early-stage or story-driven for the long-term quality framework."
+description: "Mid-horizon (3 month to 3 year) growth position evaluator for U.S. small/mid-cap companies riding a durable catalyst -- not a quick swing trade, not a 10-year compounder bet. Three modes: SCAN (screen a universe for growth-with-catalyst candidates), DEEP EVAL (full evaluation of a specific ticker's catalyst durability, growth trajectory, and insider conviction), and POSITION CHECK (re-underwrite an open growth position after an earnings print or news event). Use this skill When the user asks about a growth story with legs, a multi-quarter thesis, insider buying as a signal, or a stock that's too slow for the swing scanner but too early-stage or story-driven for the long-term quality framework."
 ---
 
 # Catalyst Growth Investor -- Mid-Horizon Growth-With-Catalyst Framework
@@ -33,7 +33,7 @@ This skill has real, tested scripts in `../../shared/` (shared across swing-trad
 - **SEC filings (10-K, 10-Q, 8-K catalyst confirmation, contract disclosures):**
   `uv run --with edgartools python3 ../../shared/sec_filings.py`
 - **Reddit sentiment (discovery/confirming signal only, never a decision input):**
-  `uv run --with praw python3 ../../shared/reddit_sentiment.py`
+  `uv run --with praw python3 ../../shared/sentisense_sentiment.py`
   (currently unavailable -- Reddit closed self-serve OAuth app creation in Nov 2025. Skip this source rather than block on it; it was never a decision input here anyway.)
 - **Independent catalyst verification (does this claim hold up outside company PR):**
   `uv run --with requests python3 ../../shared/perplexity_verify.py`
@@ -46,9 +46,9 @@ For qualitative catalyst research the scripts don't cover -- competitor moves, T
 
 ## Mode Selection
 
-- **SCAN MODE** -- you ask to screen a sector or universe for growth-with-catalyst candidates.
-- **DEEP EVAL MODE** -- you provide one ticker and a catalyst (or ask to find one) and want a full evaluation.
-- **POSITION CHECK MODE** -- you own this and want a re-underwrite after earnings or news.
+- **SCAN MODE** -- the user asks to screen a sector or universe for growth-with-catalyst candidates.
+- **DEEP EVAL MODE** -- the user provides one ticker and a catalyst (or asks to find one) and wants a full evaluation.
+- **POSITION CHECK MODE** -- the user owns this and wants a re-underwrite after earnings or news.
 
 If the mode is ambiguous, ask before proceeding.
 
@@ -89,7 +89,7 @@ Any hit = reject. For existing positions, immediate high-priority review.
 
 ### Scan Process
 
-1. Call `screen_stocks.py` with market cap and sector/industry filters matching your request (e.g. `{"market_cap_min": 100000000, "market_cap_max": 5000000000, "sector": "Technology", "count": 25}`)
+1. Call `screen_stocks.py` with market cap and sector/industry filters matching the user's ask (e.g. `{"market_cap_min": 100000000, "market_cap_max": 5000000000, "sector": "Technology", "count": 25}`)
 2. For each candidate, pull `fetch_stock_data.py` fields: `fundamentals` (revenue_growth, earnings_growth), `insiders`, `institutional`, `analyst`
 3. Filter for revenue growth >=15% YoY and check for a news-verifiable catalyst (quick `perplexity_verify.py` pass or web search per candidate)
 4. Apply hard reject rules
@@ -126,7 +126,7 @@ After output, ask: "Want the full Deep Eval on any of the passes?"
 
 Pull via `fetch_stock_data.py` (all field groups): price, fundamentals, dividends (if any), insiders, institutional, analyst.
 
-If you haven't specified the catalyst, search recent news and SEC filings (8-Ks especially) for what's driving the story.
+If the user hasn't specified the catalyst, search recent news and SEC filings (8-Ks especially) for what's driving the story.
 
 ### Component A: Catalyst Verification (35% weight) -- Gate Layer
 
@@ -137,7 +137,7 @@ If you haven't specified the catalyst, search recent news and SEC filings (8-Ks 
 
 ### Component B: Growth Trajectory (25% weight)
 
-1. **Revenue growth trend:** Pull 4-6 quarters via `fetch_stock_data.py`. Accelerating is the strongest signal; flat-but-elevated is acceptable if the catalyst is still early-stage; decelerating despite catalyst claims is a red flag (see Hard Reject #4).
+1. **Revenue growth trend:** Pull 4-6 quarters via `financials.py`. Accelerating is the strongest signal; flat-but-elevated is acceptable if the catalyst is still early-stage; decelerating despite catalyst claims is a red flag (see Hard Reject #4).
 2. **Earnings growth vs revenue growth:** Is growth translating to the bottom line, or is this top-line-only with margin compression?
 3. **Forward guidance:** What has management explicitly guided to, and does the current run-rate support it?
 4. **Analyst estimate revisions:** Rising estimates (via `fetch_stock_data.py` analyst fields) confirm the market is starting to recognize the catalyst; falling estimates despite a "growth story" narrative is a red flag.
@@ -232,7 +232,7 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 
 - Ticker, entry price/date, original catalyst thesis, what triggered this check (earnings, news, scheduled review)
 
-If these aren't provided, ask before running.
+If the user doesn't provide these, ask before running.
 
 ### Re-Underwriting Checklist
 
@@ -301,3 +301,4 @@ Disclaimer: This is not financial advice. All investing involves risk. Do your o
 - **Be direct.** State the decision and the specific reason. No hedging.
 - **Know the difference between this skill and the other two.** One-time pop with no durability -> swing-trade-scanner. Proven 10-year moat with no active catalyst -> longterm-quality-investor. Multi-quarter catalyst with growth to match -> here.
 - **Prefer the tested scripts in `../../shared/` over web search wherever they cover the need.**
+
